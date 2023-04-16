@@ -1,3 +1,15 @@
+// ==UserScript==
+// @name         优学院显示评分人id
+// @namespace    http://tampermonkey.net/
+// @version      0.3
+// @description  显示评分人的id
+// @author       itsdapi
+// @match        https://homework.ulearning.cn/
+// @run-at       document-start
+// @grant        unsafeWindow
+// @license MIT
+// ==/UserScript==
+
 (function () {
     'use strict';
     //If you want to show the name, just change this to TRUE xD.
@@ -14,11 +26,20 @@
 
     //main
     async function app() {
-        const params = getParams()
-        const classData = await getClassData(params.classid, params.token)
-        const peerReviewData = await getPeerReviewList(params.homeworkid, params.studentid, params.classid, params.token)
-        const buildData = buildList(classData, peerReviewData)
-        appendInfo(buildData)
+        console.log('Ulearning-scorer-finder is running!')
+        try {
+            const params = getParams()
+            const classData = await getClassData(params.classid, params.token)
+            const homeworkData = await getHomeworkDetail(params.homeworkid, params.studentid, params.classid, params.token)
+            const peerHomeworkData = await getPeerHomeworkDetail(params.homeworkid, params.studentid, params.token)
+            const builedHomeworkData = buildList(classData, homeworkData)
+            const builedPeerHomeworkData = buildList(classData, peerHomeworkData)
+            appendInfoToHomework(builedHomeworkData)
+            appendInfoToPeerHomework(builedPeerHomeworkData)
+        } catch (error) {
+            console.error('Script Error!', error)
+        }
+
     }
 
     //get important params for data
@@ -56,30 +77,59 @@
         return result.list
     }
 
-    async function getPeerReviewList(homeworkid, studentid, classid, token) {
+    async function getHomeworkDetail(homeworkid, studentid, classid, token) {
         const url = `https://homeworkapi.ulearning.cn/stuHomework/homeworkDetail/${homeworkid}/${studentid}/${classid}`
         const result = await send(url, token)
         return result.result.peerReviewHomeworkList
     }
 
-    function buildList(classData, peerReviewData) {
+    async function getPeerHomeworkDetail(homeworkid, studentid, token) {
+        const url = `https://homeworkapi.ulearning.cn/stuHomework/peerReviewHomeworkDatil/${homeworkid}/${studentid}`
+        const result = await send(url, token)
+        return result.result
+    }
+
+    function buildList(classData, homeworkData) {
         let result_list = []
-        for(let review of peerReviewData){
-            let og_result_list = result_list 
+        for (let homework of homeworkData) {
+            let og_result_list = result_list
             let result = classData.find((element) => {
-                return element.userId === review.userID
+                return element.userId === homework.userID
             })
+            if (typeof (result) === typeof (undefined)) {
+                console.log(`Name to ${homework.userID} not found!`)
+                homework.name = `未找到 id: ${homework.userID}`
+            } else {
+                console.log(`ID ${homework.userID} found!`)
+                homework.name = result.name
+            }
             // console.log(result.name)
-            review.name = result.name
-            result_list = [...og_result_list, review]
+            result_list = [...og_result_list, homework]
         }
         return result_list
     }
 
-    async function appendInfo(info) {
+    async function appendInfoToHomework(info) {
         await waitForContentLoad()
-        let oriElements = document.querySelectorAll('.peermain')
-        for (let [index, scoreWrapper] of oriElements.entries()) {
+        let peerHomeworkItemEle = document.querySelectorAll('.peermain')
+        if (peerHomeworkItemEle.length !== 0) {
+            for (let [index, scoreWrapper] of peerHomeworkItemEle.entries()) {
+                scoreWrapper.insertAdjacentHTML('afterend', `<div>${(hardcore_mode ? info[index].name : info[index].userID)}</div>`)
+            }
+        } else {
+            let myHomeworkEle = document.querySelectorAll('.stuworkdetails-zone')
+            console.log(myHomeworkEle)
+            for (let _info of info) {
+                myHomeworkEle[0].insertAdjacentHTML('afterend', `<div>${_info.name}: ${_info.score}</div>`)
+            }
+
+        }
+    }
+
+    async function appendInfoToPeerHomework(info) {
+        await waitForContentLoad()
+        let peerHomeworkEle = document.querySelectorAll('.peer_host')
+        for (let [index, scoreWrapper] of peerHomeworkEle.entries()) {
             scoreWrapper.insertAdjacentHTML('afterend', `<div>${(hardcore_mode ? info[index].name : info[index].userID)}</div>`)
         }
     }
@@ -116,26 +166,5 @@
             };
             xhr.send()
         })
-
     }
-
-
-    // function intersection() {
-    //     var origOpen = XMLHttpRequest.prototype.open;
-    //     XMLHttpRequest.prototype.open = function () {
-    //         this.addEventListener('load', function () {
-    //             let target = /homeworkDetail/gm
-    //             //正则匹配目标地址
-    //             if (target.test(this.responseURL)) {
-    //                 const data = JSON.parse(this.response).result.peerReviewHomeworkList
-    //                 console.log(this.responseURL)
-    //                 appendInfo(data)
-    //             }
-    //         });
-    //         origOpen.apply(this, arguments);
-    //     };
-    // }
-
-
-
 })();
